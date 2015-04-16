@@ -6,106 +6,166 @@
 */
 public with sharing class TBN_CapturedAnswersHandler
  {
-    Id OppId;                                          //Opportunity Id from the standard controller
-    public List<QuestionWrapper> lstQuestionWrapper   {get; set;}
-    
+    private map<Id , Answer__c> mapQuestionToAnswers           {	get;set;	} 
+    private map<Id , Question__c> mapIdToQuestions             {	get;set;	}
+    public List<DisplayWrapperClass> lstDisplayWrapper         {	get;set;	}
+    private map<Id , Set<Answer__c>> mapProductToAnswerSet     {	get;set;	}
+    private map<ID , Set<Id>> mapProductIDToQuestions          {	get;set;	}
+    private map<Id , String> mapIdToProductName                {	get;set;	}
+    public map<Product2 , List<DisplayWrapperClass>> mapProductIdToQA   {	get;set;	}
+    public Id OppId                                            {	get;set;	}
+     
+     
+/*
+@ClassName    : DisplayWrapperClass
+@CreatedOn    : 15/April/2015
+@ModifiedBy   : Ranjitha
+@Description  : Wrapper class to check which questions to be displayed.
+*/
+     public class DisplayWrapperClass
+     {
+         public String strQuestion    {		get;set;	}
+         public Boolean isComment     {		get;set;	}
+         public Boolean isPicklist    {		get;set;	}
+         public Boolean isCheckbox    {		get;set;	}
+         public String strComment     {		get;set;	}
+         public Boolean isYes         {		get;set;	}
+         public Boolean isNo          {		get;set;	}
+         public String strPicklist    {		get;set;	}
+         
+         public DisplayWrapperClass(String strQuestion , String strComment , Boolean isYes , Boolean isNO , String isPicklist , String strAnsType)
+         {
+             this.isComment=false;
+             this.isPicklist=false;
+             this.isCheckbox=false;
+         }
+     }
+     
+ 
    //constructor class TBN_CapturedAnswersHandler 
     public TBN_CapturedAnswersHandler(ApexPages.StandardController Ctrl)
      {
-        OppId = Ctrl.getId();  
-        lstQuestions = new list<Question__c>();
-        fetchProducts();
+       OppId = Ctrl.getId();
+       mapProductIdToQA = new map<Product2 , List<DisplayWrapperClass>>();
+       mapQuestionToAnswers = new map<Id , Answer__c>();
+       lstDisplayWrapper = new List<DisplayWrapperClass>();
+       fetchQuestionAnswer();
      }
      
 /*
-@ClassName    : QuestionWrapper
-@CreatedOn    : 15/April/2015
-@ModifiedBy   : Ranjitha
-@Description  : Controller check which questions are can be displayed.
-*/
- 
- public class QuestionWrapper
- {
-     List<QuestionWrapper> lstQuestionWrapper   {	get; set;	}
-     public Product2 Name;                      {	get; set;	}
-     public Answer__c objAnswer;                {	get;set;	}
-                    
- 	 public QuestionWrapper(ProductName, QuestionText__c, Answer__c objAnswer)
- 	 {
- 	    this.ProductName = ProductName;
- 	 	Answer__c objAnswer = new Answer__c();
- 	 	this.QuestionText__c = QuestionText__c;
- 	 }
- }  
-     
-/*
-@MethodName : fetchProducts 
+@MethodName : fetchQuestionAnswer
 @CreatedOn    : 15/April/2015
 @ModifiedBy   : Ranjitha
 @Description: This method is used to fetch the Products, for the productGroups which in turn will fetch the Question and Answer 
 */
 
+private void fetchQuestionAnswer()
+{
+    map<Id , Id > mapProductIdToProductGroup = new map<Id , Id>();
+    mapIdToProductName = new map<Id ,String>();
+    map<Id , String> mapIdtoProductGroup = new map<Id ,String>();
+    
+    for(OpportunityLineItem objOLI : [Select Id , Product2Id , Product2.ProductGroup__r.Name , Product2.ProductGroup__c , Product2.Name from OpportunityLineItem where OpportunityId =: OppId])
+    {
+        mapIdToProductName.put(objOLI.Product2Id , objOLI.Product2.Name);
+        mapProductIdToProductGroup.put(objOLI.Product2Id , objOLI.Product2.ProductGroup__c);
+        mapIdtoProductGroup.put(objOLI.Product2.ProductGroup__c , objOLI.Product2.ProductGroup__r.Name);
+       
+    }
+    
+    mapProductToAnswerSet = new map<Id , Set<Answer__c>>();
+    mapProductIDToQuestions = new map<Id , Set<Id>>();
+    mapIdToQuestions = new map<Id , Question__c>([Select Id , QuestionText__c , QuestionType__c from Question__c where ProductGroup__c IN :mapIdtoProductGroup.keySet()]);
+    map<Id , Product2 > mapIdToProduct = new map<Id , Product2>([Select Id , Name from Product2 where Id IN:mapIdToProductName.keySet()]);
+    
+    for(Answer__c objAnswer : [Select Id , BooleanAnswer__c , Product__c , ParagraphText__c , PicklistAnswer__c , Question__c from Answer__c where (Question__c IN :mapIdToQuestions.keySet() AND Opportunity__c =: OppId)])
+    {
+        if(!mapProductToAnswerSet.containsKey(objAnswer.Product__c))
+        {
+            mapProductToAnswerSet.put(objAnswer.Product__c , new set<Answer__c>{objAnswer});
+        }
+        mapProductToAnswerSet.get(objAnswer.Product__c).add(objAnswer);
+        if(mapProductIDToQuestions.containsKey(objAnswer.Product__c))
+        {
+            mapProductIDToQuestions.put(objAnswer.Product__c , new set<Id>{objAnswer.Question__c});
+        }
+        mapProductIDToQuestions.get(objAnswer.Product__c).add(objAnswer.Question__c);
+    }
+}
+
+/*
+@MethodName : onloadInsertAnswers
+@CreatedOn    : 15/April/2015
+@ModifiedBy   : Ranjitha
+@Description: This method is used to load the answers everytime the page is loaded again
+*/
+public void onloadInsertAnswers()
+{
+    List<Answer__c> lstAnswerToInsert = new List<Answer__c>();
+    for(Id objProductID : mapIdToProductName.keySet())
+    {
+        for(Id QuestionId : mapIdToQuestions.keySet())
+        {
+            if(!mapProductToAnswerSet.containsKey(objProductID))
+            {
+                lstAnswerToInsert.add(new Answer__c(Product__c = objProductID , Question__c = QuestionId , Opportunity__c = OppId));
+            }
+            else
+            {
+                if(!mapProductIDToQuestions.get(objProductID).contains(QuestionId))
+                {
+                    lstAnswerToInsert.add(new Answer__c(Product__c = objProductID , Question__c = QuestionId , Opportunity__c = OppId));
+                }
+            }
+        }
+    }
+    
+    if(!lstAnswerToInsert.isEmpty())
+        insert lstAnswerToInsert;
+}
+ /*
+@MethodName : fetchProducts 
+@Description: This method is used to fetch the Products, for the productGroups which in turn will fetch the Question and Answer 
+*/
+/*
      public void fetchProducts()
      {
-        List<Product2>LstProducts = new list<Product2>();        //list of all the Products
-        set<Id>setProductId = new set<Id>();                     //set to store the ProductId     
-        set<Id>setProductGroupId = new set<Id>();               //set to store the ProductGroup Id
-        set<Id>setAnswerId = new set<Id>();                     //set to store the Answer Id
-        Map<Id, list<Product2>>mapProductIdtoProductGroup  = new Map<Id, list<Product2>>();
-     
-      
-        //Iterate over OpportunityLineItem to get the Unique  set of ProductId 
+        set<Id>setProductId = new set<Id>(); 
+        set<Id>setProductGroupId = new set<Id>();
+        set<Id>setAnswerId = new set<Id>();
+        map<Id,Id>mapQuestionProductGroup = new map<Id,Id>();
+        
          for(OpportunityLineItem  Objoli : [ Select Product2Id ,OpportunityId 
                                              From OpportunityLineItem 
-                                             where OpportunityId=: OppId])
-          {
+                                             where OpportunityId=: OppId]) {
                setProductId.add(Objoli.Product2Id);
-                      
+               system.debug('==========setProductId==========='+setProductId);             
          }
          
-         //Itearte over the Products to get the list of Products LstProducts
          for(Product2 objproduct: [ Select Id,Name,ProductGroup__c
                                     From Product2
                                     where Id =: setProductId] )
           {
-            LstProducts.add(objproduct.ProductGroup__c);
-         
+            setProductGroupId.add(objproduct.ProductGroup__c);
+            system.debug('==========setProductGroupId==========='+setProductGroupId);  
           } 
           
-          for(Product2 objproduct : LstProducts)
-          {
-          	//If the map does not contain ProductGroup__c 
-          	if(!mapProductIdtoProductGroup.containskey(objproduct.ProductGroup__c))
-          	{
-          		mapProductIdtoProductGroup.put(objproduct.ProductGroup__c, new list<Product2> {objproduct});
-          	}
-          	else
-          	{
-          		mapProductIdtoProductGroup.get(objproduct.ProductGroup__c).put(objproduct);
-          	}
-          }
-          
-          //Iterate over the Question__c where ProductGroup__c is present  on  mapProductIdtoProductGroup.keyset()
-           for(Question__c objquestion: [ select Name, QuestionText__c,QuestionType__c,ProductGroup__c,QuestionPicklist__c,RecordTypeId
-	                                      From Question__c
-	                                      where ProductGroup__c =: mapProductIdtoProductGroup.keyset() ])
-              {
-              		  Answer__c objAnswer = new Answer__c();
-                      lstQuestionWrapper.add(new QuestionWrapper(ProductName, QuestionText__c, objAnswer)); 	
-              }
-       }
-/*
-* @MethodName   : save()
-* @CreatedOn    : 15/April/2015
-* @CreatedBy    : Ranjitha
-* @Description  : Whenever a user clicks save button, a New record must be created along with the  respective Question__c,Opportunity and Product2
-*/
-       public void save()
-       {
-       	  list<Answer__c>lstAnswerstosave= new list<Answer__c>();
-       	  for(Integer i=0; i<lstwrapperAccountsize; i++)
-       	  {
-       	  	if(lstwrapperAccountsize)
-       	  }
-       }
+          for(Question__c objquestion: [select Name, QuestionText__c,ProductGroup__c,RecordTypeId
+                                        From Question__c
+                                        where ProductGroup__c =: setProductGroupId])
+         {
+            mapQuestionProductGroup.put(objquestion.Id,objquestion.ProductGroup__c ); 
+            system.debug('==========mapQuestionProductGroup==========='+mapQuestionProductGroup);                       
+         } 
+          for(Answer__c objanswer: [ Select Id,RecordTypeId, Question__c, PicklistAnswer__c, ParagraphText__c,BooleanAnswer__c,Product__c  
+                                     From Answer__c
+                                     where Product__c=:setProductId AND Question__c=:mapQuestionProductGroup.keyset() ])  
+         {
+            setAnswerId.add(objanswer.Id);
+            system.debug('==========setAnswerId==========='+setAnswerId);    
+         }
+            
+     }
+     */
 
+}
