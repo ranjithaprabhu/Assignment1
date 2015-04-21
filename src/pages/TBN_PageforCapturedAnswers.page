@@ -1,0 +1,32 @@
+<apex:page standardcontroller="Opportunity" extensions="TBN_CapturedAnswersHandler" tabStyle="Opportunity" showHeader="true">
+<apex:sectionHeader title="Opportunity" subtitle="Form"/>    
+<apex:form >
+	<apex:pageBlock title="My Content" mode="edit" id="pg">
+       <apex:pageBlockButtons location="bottom">
+	     <apex:commandButton action="{!save}" value="Save"/>
+	      <apex:commandButton action="{!Edit}" value="Edit"/>
+	     <apex:commandButton action="{!cancel}" value="Cancel"/>
+      </apex:pageBlockButtons>
+      
+                 <apex:repeat value="{!mapIdToProductName}" var="key"> 
+                 <apex:pageBlockSection title="{!mapIdToProductName[key]}" collapsible="true"> 
+				    	  <apex:repeat value="{!mapIdToQuestions}" var="key1">
+								<apex:outputText value="{!mapIdToQuestions[key1].QuestionText__c}"/><br/>
+				          </apex:repeat>
+						 <apex:inputField value="{!ans.PicklistAnswer__c}" id="picklist2"  label="Picklist:"/>
+						  <apex:inputField value="{!Quest.QuestionType__c}" id="Text1"  label="Type of Answer:" />
+						  <apex:selectRadio value="{!selectedValue}" >
+            			 <apex:selectOptions value="{!items}"/>  
+            			 </apex:selectRadio>  
+						 <apex:inputField value="{!ans.ParagraphText__c}" id="Text" label="Answer Text:"/>
+				</apex:pageBlockSection>
+				  </apex:repeat>
+				  
+			
+				<apex:pageBlockSection title="" collapsible="true">
+				 Number of Answered Questions:     <br></br>    
+				 Number of Unanswered Questions:   {!quest.Id}
+				</apex:pageBlockSection>
+</apex:pageBlock>
+</apex:form>
+</apex:page>
